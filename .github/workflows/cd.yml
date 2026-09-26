@@ -101,8 +101,11 @@ jobs:
   #    事前準備:
   #      1. GitHub リポジトリの Settings > Environments で "production" を作成
   #      2. Required reviewers に承認者を追加
-  #      3. GitHub Secrets に RENDER_PRODUCTION_DEPLOY_HOOK_URL を登録
-  #    承認者が "Approve and deploy" をクリックすると本番デプロイが実行される
+  #      3. （任意）本番用の Render サービスを作り、Auto-Deploy を Off にして、
+  #         その Deploy Hook を GitHub Secrets の RENDER_PRODUCTION_DEPLOY_HOOK_URL に登録
+  #    承認者が "Approve and deploy" をクリックすると本番デプロイが実行される。
+  #    RENDER_PRODUCTION_DEPLOY_HOOK_URL が未登録のときは、デプロイを省略して成功で終わる
+  #    （本番用のサービスを作らなくても、承認ゲートの流れは体験できる）。
   # ─────────────────────────────────────────
   deploy-production:
     name: Deploy to Production
@@ -111,7 +114,14 @@ jobs:
     environment: production
     steps:
       - name: Trigger production deploy
-        run: curl -fsS -X POST "${{ secrets.RENDER_PRODUCTION_DEPLOY_HOOK_URL }}"
+        env:
+          HOOK_URL: ${{ secrets.RENDER_PRODUCTION_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK_URL" ]; then
+            echo "RENDER_PRODUCTION_DEPLOY_HOOK_URL が未登録のため、本番デプロイを省略しました"
+            exit 0
+          fi
+          curl -fsS -X POST "$HOOK_URL"
 
   # ─────────────────────────────────────────
   # 4. セキュリティサマリー
