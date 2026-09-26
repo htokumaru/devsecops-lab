@@ -1,0 +1,47 @@
+<%- include('partials/header') %>
+<h1><%= event.name %>（主催者画面）</h1>
+
+<% if (msg) { %><p class="notice"><%= msg %></p><% } %>
+
+<table class="detail">
+  <tr><th>会場</th><td><%= event.venue %></td></tr>
+  <tr><th>応募期間</th><td><%= moment(event.entry_start).format('YYYY/MM/DD') %> 〜 <%= moment(event.entry_end).format('YYYY/MM/DD') %></td></tr>
+  <tr><th>当選枠</th><td><%= event.capacity.toLocaleString() %> 席</td></tr>
+  <tr><th>応募総口数</th><td class="num"><%= total.toLocaleString() %> 口（<%= entries.length %> 件）</td></tr>
+  <tr><th>状態</th><td><span class="status status-<%= event.status %>"><%= event.status === 'open' ? '受付中' : '抽選済み' %></span></td></tr>
+</table>
+
+<form method="post" action="/admin/events/<%= event.id %>/draw" class="draw">
+  <button type="submit">抽選を実施する</button>
+</form>
+
+<h2>応募一覧</h2>
+<table>
+  <thead>
+    <tr><th>#</th><th>応募者</th><th>連絡先</th><th>口数</th><th>応募日時</th><th>結果</th></tr>
+  </thead>
+  <tbody>
+    <% if (entries.length === 0) { %>
+      <tr><td colspan="6" class="empty">応募はありません</td></tr>
+    <% } %>
+    <% entries.forEach(function (e) { %>
+      <tr>
+        <td><%= e.id %></td>
+        <td><%= e.applicant %></td>
+        <td><%= e.contact %></td>
+        <td class="num"><%= e.quantity %> 口</td>
+        <td><%= e.created_at %></td>
+        <td>
+          <% if (event.status === 'open') { %>
+            <span class="status status-open">抽選前</span>
+          <% } else { %>
+            <span class="status status-<%= e.result %>"><%= e.result === 'won' ? '当選' : '落選' %></span>
+          <% } %>
+        </td>
+      </tr>
+    <% }); %>
+  </tbody>
+</table>
+
+<p><a href="/">抽選一覧に戻る</a></p>
+<%- include('partials/footer') %>

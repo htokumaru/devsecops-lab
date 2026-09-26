@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>チケット抽選サービス</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="/">チケット抽選サービス</a>
+  <% if (currentUser) { %>
+    <nav>
+      <a href="/">抽選一覧</a>
+      <% if (currentUser.role === 'organizer') { %>
+        <span class="badge">主催者</span>
+      <% } else { %>
+        <a href="/entries">応募状況</a>
+      <% } %>
+    </nav>
+    <form class="logout" method="post" action="/logout">
+      <span class="who"><%= currentUser.display_name %></span>
+      <button type="submit">ログアウト</button>
+    </form>
+  <% } %>
+</header>
+<main>

@@ -1,0 +1,20 @@
+<%- include('partials/header') %>
+<h1>ログイン</h1>
+
+<% if (msg) { %><p class="notice"><%- msg %></p><% } %>
+
+<form method="post" action="/login" class="card">
+  <label>ユーザー名
+    <input type="text" name="username" autocomplete="username" required>
+  </label>
+  <label>パスワード
+    <input type="password" name="password" autocomplete="current-password" required>
+  </label>
+  <button type="submit">ログイン</button>
+</form>
+
+<p class="hint">
+  実習用アカウント: 応募者 <code>yamada / yamada-pass</code>、<code>suzuki / suzuki-pass</code><br>
+  主催者 <code>tanaka / tanaka-pass</code>、<code>sato / sato-pass</code>
+</p>
+<%- include('partials/footer') %>

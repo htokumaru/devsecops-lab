@@ -1,0 +1,9 @@
+node_modules/
+app/data/
+*.db
+*.tar.gz
+npm-audit-report.json
+semgrep-report.sarif
+report_html.html
+zap/
+.env

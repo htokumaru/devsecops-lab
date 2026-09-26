@@ -1,0 +1,78 @@
+diff --git a/app/app.js b/app/app.js
+index 87a2997..38e192d 100644
+--- a/app/app.js
++++ b/app/app.js
+@@ -194,14 +194,6 @@ app.post('/events/:id/entries', requireLogin, async (req, res) => {
+   if (!Number.isInteger(quantity) || quantity <= 0) return back('口数は1以上で入力してください');
+   if (!contact) return back('連絡先を入力してください');
+ 
+-  // 同一イベントへの応募は1人あたり entry_limit 口まで
+-  const applied = db.prepare(
+-    'SELECT COALESCE(SUM(quantity), 0) AS total FROM entries WHERE event_id = ? AND user_id = ?'
+-  ).get(event.id, userId).total;
+-  if (applied + quantity > event.entry_limit) {
+-    return back(`応募は1人あたり${event.entry_limit}口までです（応募済み: ${applied}口）`);
+-  }
+-
+   // 応募の証跡をディスクへ確実に書き出してから受け付ける
+   const audit = await fs.promises.open(AUDIT_LOG, 'a');
+   await audit.write(
+@@ -210,9 +202,18 @@ app.post('/events/:id/entries', requireLogin, async (req, res) => {
+   await audit.sync();
+   await audit.close();
+ 
+-  db.prepare(
+-    'INSERT INTO entries (event_id, user_id, quantity, contact, result, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+-  ).run(event.id, userId, quantity, contact, 'pending', moment().format('YYYY-MM-DD HH:mm:ss'));
++  // 上限の確認と登録を1文で行い、超過する場合は登録しない
++  const inserted = db.prepare(`
++    INSERT INTO entries (event_id, user_id, quantity, contact, result, created_at)
++    SELECT ?, ?, ?, ?, 'pending', ?
++     WHERE (SELECT COALESCE(SUM(quantity), 0) FROM entries WHERE event_id = ? AND user_id = ?) + ? <= ?
++  `).run(
++    event.id, userId, quantity, contact, moment().format('YYYY-MM-DD HH:mm:ss'),
++    event.id, userId, quantity, event.entry_limit
++  );
++  if (inserted.changes === 0) {
++    return back(`応募は1人あたり${event.entry_limit}口までです`);
++  }
+ 
+   res.redirect('/entries?msg=' + encodeURIComponent('応募を受け付けました'));
+ });
+@@ -241,6 +242,10 @@ app.get('/entries/:id', requireLogin, (req, res) => {
+   if (!entry) {
+     return res.status(404).render('error', { message: '応募が見つかりません' });
+   }
++  // 応募した本人だけが閲覧できる
++  if (entry.user_id !== req.session.user.id) {
++    return res.status(403).render('error', { message: 'この応募を閲覧する権限がありません' });
++  }
+   res.render('entry', { entry });
+ });
+ 
+@@ -250,6 +255,10 @@ app.get('/admin/events/:id', requireLogin, requireOrganizer, (req, res) => {
+   if (!event) {
+     return res.status(404).render('error', { message: 'イベントが見つかりません' });
+   }
++  // 自分が主催するイベントだけを閲覧できる
++  if (event.organizer_id !== req.session.user.id) {
++    return res.status(403).render('error', { message: 'このイベントの主催者ではありません' });
++  }
+   const entries = db.prepare(`
+     SELECT entries.*, users.display_name AS applicant
+       FROM entries JOIN users ON users.id = entries.user_id
+@@ -266,6 +275,14 @@ app.post('/admin/events/:id/draw', requireLogin, requireOrganizer, (req, res) =>
+     return res.status(404).render('error', { message: 'イベントが見つかりません' });
+   }
+ 
++  // 自分が主催するイベントのみ、かつ未実施の場合のみ抽選できる
++  if (event.organizer_id !== req.session.user.id) {
++    return res.status(403).render('error', { message: 'このイベントの主催者ではありません' });
++  }
++  if (event.status !== 'open') {
++    return res.status(409).render('error', { message: 'このイベントの抽選は実施済みです' });
++  }
++
+   const entries = db.prepare('SELECT * FROM entries WHERE event_id = ?').all(event.id);
+   const shuffled = entries
+     .map(e => ({ e, k: crypto.randomInt(1e9) }))

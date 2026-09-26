@@ -1,0 +1,22 @@
+<%- include('partials/header') %>
+<h1>応募 #<%= entry.id %></h1>
+
+<table class="detail">
+  <tr><th>公演名</th><td><%= entry.event_name %></td></tr>
+  <tr><th>会場</th><td><%= entry.venue %></td></tr>
+  <tr><th>開催日</th><td><%= moment(entry.held_on).format('YYYY年M月D日') %></td></tr>
+  <tr><th>応募者</th><td><%= entry.applicant %></td></tr>
+  <tr><th>連絡先</th><td><%= entry.contact %></td></tr>
+  <tr><th>口数</th><td class="num"><%= entry.quantity %> 口</td></tr>
+  <tr><th>応募日時</th><td><%= entry.created_at %></td></tr>
+  <tr><th>結果</th><td>
+    <% if (entry.event_status === 'open') { %>
+      <span class="status status-open">抽選前</span>
+    <% } else { %>
+      <span class="status status-<%= entry.result %>"><%= entry.result === 'won' ? '当選' : '落選' %></span>
+    <% } %>
+  </td></tr>
+</table>
+
+<p><a href="/entries">応募状況に戻る</a></p>
+<%- include('partials/footer') %>

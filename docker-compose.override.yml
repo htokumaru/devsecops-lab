@@ -1,0 +1,24 @@
+# 手元で実習アプリを動かすための設定。docker compose が docker-compose.yml に重ねて自動で読み込む。
+#
+# - 手元の app/ をコンテナーと共有し、nodemon がファイルの変更を検知してアプリを再起動する。
+#   コードやテンプレートを修正すると、ビルドし直さなくても数秒で反映される。
+# - node_modules はコンテナー専用のボリュームに置く（手元に Node.js がなくても動く）。
+#   パッケージを更新したときは docker compose restart app で入れ直す（起動時に npm install が走る）。
+# - Windows の Docker Desktop では共有フォルダーの変更が通知されないことがあるため、
+#   nodemon は -L（定期的に確認する方式）で動かす。
+# - NODE_ENV は development にする。production では Express がテンプレートをキャッシュし、
+#   修正が反映されないため。npm install が devDependencies（nodemon）を入れるためにも必要。
+#
+# CI（ci.yml・verify-solutions.yml）はこのファイルを読まないよう -f docker-compose.yml を指定し、
+# これまでどおりイメージを作り直して動かす。
+services:
+  app:
+    command: sh -c "npm install && npx nodemon -L app.js"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./app:/app
+      - node_modules:/app/node_modules
+
+volumes:
+  node_modules:

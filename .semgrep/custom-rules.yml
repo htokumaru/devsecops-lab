@@ -1,0 +1,22 @@
+rules:
+  # ─────────────────────────────────────────────────────────
+  # SQLインジェクション: node:sqlite で変数を直接 prepare() に渡している
+  # 安全な書き方: db.prepare('SELECT * FROM t WHERE id = ?').get(id)
+  # ─────────────────────────────────────────────────────────
+  - id: sqli-node-sqlite-variable-query
+    patterns:
+      - pattern: db.prepare($QUERY)
+      - pattern-not: db.prepare("...")
+      - pattern-not: db.prepare('...')
+    message: >
+      [CWE-89] SQLインジェクションの疑い: prepare() に変数が渡されています。
+      テンプレートリテラルや文字列連結でSQLを組み立てると、ユーザー入力がそのままSQLとして実行されます。
+      プレースホルダー (?) を使用してください:
+        db.prepare('SELECT * FROM users WHERE id = ?').get(userId)
+    languages: [javascript]
+    severity: ERROR
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+      owasp: "A03:2021 - Injection"
+      references:
+        - https://nodejs.org/api/sqlite.html#statementall

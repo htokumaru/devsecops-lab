@@ -1,0 +1,32 @@
+<%- include('partials/header') %>
+<h1><%= event.name %></h1>
+
+<% if (msg) { %><p class="notice"><%= msg %></p><% } %>
+
+<table class="detail">
+  <tr><th>会場</th><td><%= event.venue %></td></tr>
+  <tr><th>開催日</th><td><%= moment(event.held_on).format('YYYY年M月D日') %></td></tr>
+  <tr><th>応募期間</th><td><%= moment(event.entry_start).format('YYYY/MM/DD') %> 〜 <%= moment(event.entry_end).format('YYYY/MM/DD') %></td></tr>
+  <tr><th>当選枠</th><td><%= event.capacity.toLocaleString() %> 席</td></tr>
+  <tr><th>応募上限</th><td>1人あたり <%= event.entry_limit %> 口まで</td></tr>
+  <tr><th>状態</th><td><span class="status status-<%= event.status %>"><%= event.status === 'open' ? '受付中' : '抽選済み' %></span></td></tr>
+</table>
+
+<% if (event.status === 'open') { %>
+  <h2>応募する</h2>
+  <p class="hint">このイベントへの応募済み口数: <strong><%= applied %></strong> / <%= event.entry_limit %> 口</p>
+  <form method="post" action="/events/<%= event.id %>/entries" class="card">
+    <label>口数
+      <input type="number" name="quantity" min="1" max="<%= event.entry_limit %>" value="1" required>
+    </label>
+    <label>連絡先（メールアドレス / 電話番号）
+      <input type="text" name="contact" maxlength="120" placeholder="taro@example.com / 090-0000-0000" required>
+    </label>
+    <button type="submit">応募する</button>
+  </form>
+<% } else { %>
+  <p class="hint">このイベントは抽選が完了しています。結果は<a href="/entries">応募状況</a>から確認できます。</p>
+<% } %>
+
+<p><a href="/">抽選一覧に戻る</a></p>
+<%- include('partials/footer') %>

@@ -1,0 +1,246 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  # 手動実行: GitHub Actions の UI から "Run workflow" ボタンで起動
+  # DAST ジョブは workflow_dispatch 時のみ実行される
+  workflow_dispatch:
+
+jobs:
+  # ─────────────────────────────────────────
+  # 1. ユニットテスト
+  # ─────────────────────────────────────────
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  # ─────────────────────────────────────────
+  # 2. SCA (Software Composition Analysis)
+  #    npm audit で依存パッケージの既知脆弱性を検出
+  #
+  #    【実習ポイント】
+  #    high/critical の脆弱性があると CI が失敗します。
+  #    npm audit fix または package.json のバージョン更新で修正してください。
+  # ─────────────────────────────────────────
+  sca:
+    name: SCA - npm audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit (SCA)
+        # high/critical を検出すると CI が失敗する (|| true を削除)
+        run: npm audit --audit-level=high
+
+      - name: Generate npm audit report (JSON)
+        if: always()
+        run: npm audit --json > npm-audit-report.json || true
+
+      - name: Upload SCA report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sca-npm-audit-report
+          path: app/npm-audit-report.json
+
+  # ─────────────────────────────────────────
+  # 3. SAST (Static Application Security Testing)
+  #    Semgrep でソースコードを静的解析
+  #
+  #    【実習ポイント】
+  #    検出ルール:
+  #      - p/javascript, p/nodejs, p/owasp-top-ten (公式ルールセット)
+  #      - .semgrep/custom-rules.yml (node:sqlite SQLインジェクション)
+  #    すべての重大度のルールを実行し、結果を SARIF に記録して Code scanning に送る。
+  #    CI を失敗させるのは重大度 ERROR の検出があるときだけで、WARNING 以下は
+  #    Code scanning の一覧に残してトリアージする。
+  # ─────────────────────────────────────────
+  sast:
+    name: SAST - Semgrep
+    runs-on: ubuntu-latest
+    # 新しいリポジトリでは GITHUB_TOKEN が既定で読み取り専用のため、SARIF を
+    # Code scanning にアップロードするには書き込み権限を明示する必要がある。
+    permissions:
+      contents: read
+      security-events: write   # SARIF を Code scanning にアップロードするのに必要
+      actions: read            # 非公開リポジトリでのアップロードに必要
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Semgrep (SAST)
+        # すべての重大度の結果を SARIF に書き出す。検出があってもこのステップは失敗しない
+        run: |
+          semgrep scan \
+            --config=p/javascript \
+            --config=p/nodejs \
+            --config=p/owasp-top-ten \
+            --config=.semgrep/custom-rules.yml \
+            --sarif \
+            --output=semgrep-report.sarif \
+            app/
+
+      - name: Upload SAST report (SARIF)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sast-semgrep-report
+          path: semgrep-report.sarif
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: semgrep-report.sarif
+        continue-on-error: true
+
+      - name: Fail on ERROR findings
+        # 重大度 ERROR（SARIF の level が error）の検出があるときだけ CI を失敗させる。
+        # Semgrep の SARIF は重大度をルールの defaultConfiguration.level に持つ
+        run: |
+          count=$(jq '[.runs[]
+            | (.tool.driver.rules | map({(.id): .defaultConfiguration.level}) | add) as $lv
+            | .results[]
+            | select((.level // $lv[.ruleId]) == "error")] | length' semgrep-report.sarif)
+          echo "重大度 ERROR の検出: ${count} 件"
+          test "$count" -eq 0
+
+  # ─────────────────────────────────────────
+  # 4. DAST (Dynamic Application Security Testing)
+  #    ZAP Full Scan でアプリを起動してアクティブスキャン
+  #    手動実行（workflow_dispatch）時のみ実行される
+  #
+  #    【実習ポイント】
+  #    GitHub Actions の画面から "Run workflow" ボタンで手動起動する。
+  #    .zap/rules.tsv で FAIL に設定したルールが検出されると CI が失敗する。
+  #    WARN レベルのアラートは -I フラグによりレポートに記録されるが失敗しない。
+  # ─────────────────────────────────────────
+  dast:
+    name: DAST - OWASP ZAP
+    runs-on: ubuntu-latest
+    needs: [test, sca, sast]
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start app (Docker Compose)
+        run: |
+          docker compose -f docker-compose.yml up -d --build
+          for i in {1..30}; do
+            if curl -sf http://localhost:3000/login > /dev/null 2>&1; then
+              echo "App is ready! ($i)"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 5
+          done
+
+      - name: Verify ZAP can reach the app
+        # ZAP と同じ Docker ネットワークからアプリに到達できることを先に確認する。
+        # この確認がないと、到達できないまま「検出ゼロ＝成功」という空振りが起きる。
+        run: |
+          docker run --rm --network devsecops-lab_default curlimages/curl:latest \
+            --fail --silent --show-error -o /dev/null http://devsecops-app:3000/login
+          echo "OK: ZAP から http://devsecops-app:3000 に到達できます"
+
+      - name: Run ZAP Full Scan (DAST)
+        # zaproxy/action-full-scan は network 入力を持たず、rules_file_name も
+        # コマンドに反映されない場合があるため、docker run で直接実行する。
+        #   -c rules.tsv: FAIL/WARN の割り当て（.zap/rules.tsv）
+        #   -m 5        : スパイダーの上限を5分に設定
+        #   -I          : WARN は exit code 0 扱い、FAIL のみ exit code 1
+        run: |
+          mkdir -p zap-work
+          cp .zap/rules.tsv zap-work/
+          chmod -R 777 zap-work
+          docker run --rm \
+            --network devsecops-lab_default \
+            -v "$PWD/zap-work:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-full-scan.py \
+              -t http://devsecops-app:3000 \
+              -c rules.tsv \
+              -r report.html \
+              -J report.json \
+              -m 5 -I
+
+      - name: Upload ZAP DAST report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dast-zap-report
+          path: zap-work/report.*
+
+  # ─────────────────────────────────────────
+  # 5. セキュリティサマリー
+  # ─────────────────────────────────────────
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [sca, sast, dast]
+    if: always()
+    steps:
+      - name: Print summary
+        run: |
+          echo "## CI セキュリティスキャン結果" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| スキャン種別 | ツール | 結果 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| SCA | npm audit | ${{ needs.sca.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SAST | Semgrep | ${{ needs.sast.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| DAST | OWASP ZAP | ${{ needs.dast.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 修正のヒント" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**SCA (npm audit) が失敗した場合**" >> $GITHUB_STEP_SUMMARY
+          echo "- アーティファクト \`sca-npm-audit-report\` をダウンロードして脆弱なパッケージを確認" >> $GITHUB_STEP_SUMMARY
+          echo "- \`npm audit fix\` または \`package.json\` のバージョンを更新して修正" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**SAST (Semgrep) が失敗した場合**" >> $GITHUB_STEP_SUMMARY
+          echo "- アーティファクト \`sast-semgrep-report\` (SARIF) をダウンロードして検出箇所を確認" >> $GITHUB_STEP_SUMMARY
+          echo "- GitHub の Security タブ > Code scanning からも確認可能" >> $GITHUB_STEP_SUMMARY
+          echo "- SQLインジェクション: 文字列連結による組み立てをやめ、プレースホルダー (?) に置き換える" >> $GITHUB_STEP_SUMMARY
+          echo "  （条件の有無は \`(? = '' OR col = ?)\` の形で SQL 側に寄せると、SQL文が静的なまま保てます）" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**DAST (ZAP Full Scan) が失敗した場合**" >> $GITHUB_STEP_SUMMARY
+          echo "- アーティファクト \`dast-zap-report\` (HTML) をダウンロードして検出内容を確認" >> $GITHUB_STEP_SUMMARY
+          echo "- XSS: \`app/views/login.ejs\` の \`<%-\` を \`<%=\` に変更" >> $GITHUB_STEP_SUMMARY
+          echo "- セキュリティヘッダー: \`npm install helmet\` → \`app.use(helmet())\` で対応" >> $GITHUB_STEP_SUMMARY
+          echo "- Cookie: \`httpOnly: true\` に変更（secure は HTTPS 環境でのみ true にする）" >> $GITHUB_STEP_SUMMARY
+          echo "- DAST は 'Run workflow' ボタンで手動実行（push では自動実行されない）" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,43 @@
+# プロジェクト名を固定する。既定ではディレクトリ名（GitHub Actions ではリポジトリ名）になり、
+# ネットワーク名 devsecops-lab_default がリポジトリ名によって変わると、
+# ci.yml の DAST がアプリに到達できなくなるため。
+name: devsecops-lab
+
+services:
+  app:
+    build: .
+    container_name: devsecops-app
+    ports:
+      - "3000:3000"
+    volumes:
+      - app-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/login', r => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ZAP DAST スキャン用サービス（CI/CD での使用を想定）
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    container_name: devsecops-zap
+    profiles: ["dast"]
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - ./zap:/zap/wrk
+    command: >
+      zap-baseline.py
+      -t http://app:3000
+      -r zap-report.html
+      -I
+    networks:
+      - default
+
+volumes:
+  app-data:

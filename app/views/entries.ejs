@@ -1,0 +1,31 @@
+<%- include('partials/header') %>
+<h1>応募状況</h1>
+
+<% if (msg) { %><p class="notice"><%= msg %></p><% } %>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>公演名</th><th>開催日</th><th>口数</th><th>結果</th></tr>
+  </thead>
+  <tbody>
+    <% if (entries.length === 0) { %>
+      <tr><td colspan="5" class="empty">応募はありません</td></tr>
+    <% } %>
+    <% entries.forEach(function (e) { %>
+      <tr>
+        <td><a href="/entries/<%= e.id %>"><%= e.id %></a></td>
+        <td><%= e.event_name %></td>
+        <td><%= moment(e.held_on).format('YYYY/MM/DD') %></td>
+        <td class="num"><%= e.quantity %> 口</td>
+        <td>
+          <% if (e.event_status === 'open') { %>
+            <span class="status status-open">抽選前</span>
+          <% } else { %>
+            <span class="status status-<%= e.result %>"><%= e.result === 'won' ? '当選' : '落選' %></span>
+          <% } %>
+        </td>
+      </tr>
+    <% }); %>
+  </tbody>
+</table>
+<%- include('partials/footer') %>

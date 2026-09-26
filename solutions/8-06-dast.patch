@@ -1,0 +1,54 @@
+diff --git a/app/app.js b/app/app.js
+index 5da9b7c..87a2997 100644
+--- a/app/app.js
++++ b/app/app.js
+@@ -1,6 +1,7 @@
+ 'use strict';
+ const express = require('express');
+ const session = require('express-session');
++const helmet = require('helmet');
+ const { DatabaseSync } = require('node:sqlite');
+ const moment = require('moment');
+ const crypto = require('crypto');
+@@ -85,6 +86,7 @@ if (db.prepare('SELECT COUNT(*) AS c FROM users').get().c === 0) {
+ 
+ // ── App ──────────────────────────────────────────────────────────────
+ const app = express();
++app.use(helmet());
+ app.set('view engine', 'ejs');
+ app.set('views', path.join(__dirname, 'views'));
+ app.use(express.urlencoded({ extended: false }));
+@@ -93,7 +95,7 @@ app.use(session({
+   secret: process.env.SESSION_SECRET || 'lottery-app-dev-secret',
+   resave: false,
+   saveUninitialized: true,
+-  cookie: { httpOnly: false },
++  cookie: { httpOnly: true },
+ }));
+ 
+ function requireLogin(req, res, next) {
+diff --git a/app/package.json b/app/package.json
+index 2d0774b..9332626 100644
+--- a/app/package.json
++++ b/app/package.json
+@@ -12,6 +12,7 @@
+     "ejs": "3.1.10",
+     "express": "4.22.3",
+     "express-session": "1.19.0",
++    "helmet": "8.3.0",
+     "moment": "2.31.0"
+   },
+   "devDependencies": {
+diff --git a/app/views/login.ejs b/app/views/login.ejs
+index 91f0104..ac9268b 100644
+--- a/app/views/login.ejs
++++ b/app/views/login.ejs
+@@ -1,7 +1,7 @@
+ <%- include('partials/header') %>
+ <h1>ログイン</h1>
+ 
+-<% if (msg) { %><p class="notice"><%- msg %></p><% } %>
++<% if (msg) { %><p class="notice"><%= msg %></p><% } %>
+ 
+ <form method="post" action="/login" class="card">
+   <label>ユーザー名

@@ -1,0 +1,37 @@
+# ZAP ルール設定 (TSV形式)
+# rule_id	action	description
+# action: IGNORE=無視, WARN=警告のみ, FAIL=CI失敗
+#
+# 【重要】zap_common.py の判定ロジック
+#   FAIL: この設定ファイルに FAIL と明記されたルールのみ
+#   WARN: WARN と明記されたルール、および設定ファイルに載っていないルール
+#   → 新しいアラートが出ても既定では CI は落ちない。落としたいものは明示的に FAIL にする。
+#   → -I オプションにより WARN は exit code に影響しない（レポートには記録される）。
+#
+# 実習では以下の脆弱性を意図的に組み込んでおり、FAIL に設定している:
+#   - 40012/40026: 反射型XSS (views/login.ejs の <%- msg %>)
+#   - 10010: httpOnly:false のセッションCookie (app.js の session 設定)
+#   - 10020: X-Frame-Options ヘッダー未設定 (helmet 未導入)
+#   - 10038: Content Security Policy ヘッダー未設定 (helmet 未導入)
+
+# ── 実習対象（修正するまで CI を落とす）──────────────────────────
+40012	FAIL	Cross Site Scripting (Reflected)
+40014	FAIL	Cross Site Scripting (Persistent)
+40016	FAIL	Cross Site Scripting (Persistent) - Prime
+40017	FAIL	Cross Site Scripting (Persistent) - Spider
+40026	FAIL	Cross Site Scripting (DOM Based)
+10010	FAIL	Cookie No HttpOnly Flag
+10020	FAIL	Missing Anti-clickjacking Header (X-Frame-Options)
+10038	FAIL	Content Security Policy (CSP) Header Not Set
+
+# ── 実習スコープ外（報告のみ）────────────────────────────────────
+# 本書では扱うが、この章の実習では修正対象としないもの
+10021	WARN	X-Content-Type-Options Header Missing
+10035	WARN	Strict-Transport-Security Header Not Set（HTTPS環境でのみ有効）
+10037	WARN	Server Leaks Information via "X-Powered-By" Header
+10054	WARN	Cookie without SameSite Attribute
+10055	WARN	CSP: Failure to Define Directive with No Fallback
+10063	WARN	Permissions Policy Header Not Set
+10096	WARN	Timestamp Disclosure
+10202	WARN	Absence of Anti-CSRF Tokens
+90004	WARN	Insufficient Site Isolation Against Spectre (COEP/COOP/CORP)

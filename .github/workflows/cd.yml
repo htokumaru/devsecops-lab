@@ -1,0 +1,145 @@
+name: CD Pipeline
+
+on:
+  # 手動実行: GitHub Actions の UI から "Run workflow" ボタンで起動
+  workflow_dispatch:
+  # 週次スケジュール: 毎週月曜 11:00 JST (02:00 UTC) に自動実行
+  # コードに変更がなくても実行される（新規 CVE 等の検出が目的）
+  #
+  # 【注意】Render の設定（GitHub Secrets の登録）が済むまでは無効にしています。
+  # 未設定のまま有効にすると毎週失敗し、失敗通知だけが積み上がります。
+  # Render を設定したら次の 2 行のコメントを外してください。
+  # schedule:
+  #   - cron: '0 2 * * 1'
+
+jobs:
+  # ─────────────────────────────────────────
+  # 1. デプロイ（ステージング）
+  #    Render の Deploy Hook を呼び出してステージング環境を更新する
+  #    デプロイ完了まで最大 5 分ポーリングしてから DAST へ進む
+  #
+  #    【実習ポイント】
+  #    以下の 2 つを GitHub Secrets に登録してください:
+  #      RENDER_DEPLOY_HOOK_URL : Render の Deploy Hook URL
+  #      RENDER_STAGING_URL     : Render の公開 URL (例: https://xxx.onrender.com)
+  # ─────────────────────────────────────────
+  deploy:
+    name: Deploy to Render (Staging)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+
+      - name: Wait for staging to be ready
+        # Render のビルド・起動が完了するまでポーリング（最大 5 分）
+        # 無料枠はスリープからの復帰にも時間がかかるため余裕を持たせる
+        run: |
+          for i in {1..30}; do
+            if curl -sf "${{ secrets.RENDER_STAGING_URL }}/" > /dev/null 2>&1; then
+              echo "Staging is ready! ($i)"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 10
+          done
+
+  # ─────────────────────────────────────────
+  # 2. DAST (Dynamic Application Security Testing)
+  #    ZAP Full Scan でステージング環境をアクティブスキャン
+  #    staging デプロイが成功した場合のみ実行
+  #
+  #    CI 内の Docker コンテナではなく実際のステージング URL をスキャンするため、
+  #    フレームワーク設定・ミドルウェア・インフラ設定を含めた本番に近い検証ができる。
+  #
+  #    【実習ポイント】
+  #    .zap/rules.tsv で FAIL に設定したルールが検出されると CD が失敗します。
+  #    WARN レベルのアラートは -I フラグによりレポートに記録されるが失敗しない。
+  # ─────────────────────────────────────────
+  dast:
+    name: DAST - OWASP ZAP
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    # Full Scan は時間がかかるためタイムアウトを延長
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run ZAP Full Scan (DAST)
+        # ステージング URL に対してアクティブスキャンを実施
+        #   -c rules.tsv: FAIL/WARN の割り当て（.zap/rules.tsv）
+        #   -m 5        : スパイダーの上限を5分に設定（実行時間の抑制）
+        #   -I          : WARN は exit code 0 扱い、FAIL のみ exit code 1
+        # zaproxy/action-full-scan は rules_file_name がコマンドに反映されない
+        # 場合があるため、docker run で直接実行する（ci.yml と同じ形）。
+        run: |
+          mkdir -p zap-work
+          cp .zap/rules.tsv zap-work/
+          chmod -R 777 zap-work
+          docker run --rm \
+            -v "$PWD/zap-work:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-full-scan.py \
+              -t "${{ secrets.RENDER_STAGING_URL }}" \
+              -c rules.tsv \
+              -r report.html \
+              -J report.json \
+              -m 5 -I
+
+      - name: Upload ZAP DAST report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dast-zap-report
+          path: zap-work/report.*
+
+  # ─────────────────────────────────────────
+  # 3. 本番デプロイ（要承認）
+  #    GitHub Environments の Required Reviewers で承認ゲートを設ける
+  #    DAST が成功した場合のみ承認待ち状態に移行する
+  #
+  #    【実習ポイント】
+  #    事前準備:
+  #      1. GitHub リポジトリの Settings > Environments で "production" を作成
+  #      2. Required reviewers に承認者を追加
+  #      3. GitHub Secrets に RENDER_PRODUCTION_DEPLOY_HOOK_URL を登録
+  #    承認者が "Approve and deploy" をクリックすると本番デプロイが実行される
+  # ─────────────────────────────────────────
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [dast]
+    environment: production
+    steps:
+      - name: Trigger production deploy
+        run: curl -fsS -X POST "${{ secrets.RENDER_PRODUCTION_DEPLOY_HOOK_URL }}"
+
+  # ─────────────────────────────────────────
+  # 4. セキュリティサマリー
+  # ─────────────────────────────────────────
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [deploy, dast, deploy-production]
+    if: always()
+    steps:
+      - name: Print summary
+        run: |
+          echo "## CD セキュリティスキャン結果" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| スキャン種別 | ツール | 結果 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ステージングデプロイ | Render | ${{ needs.deploy.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| DAST | OWASP ZAP | ${{ needs.dast.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 本番デプロイ | Render (production) | ${{ needs.deploy-production.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 修正のヒント" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**DAST (ZAP Full Scan) が失敗した場合**" >> $GITHUB_STEP_SUMMARY
+          echo "- アーティファクト \`dast-zap-report\` (HTML) をダウンロードして検出内容を確認" >> $GITHUB_STEP_SUMMARY
+          echo "- XSS: EJS テンプレートで \`<%-\` を \`<%=\` に変更" >> $GITHUB_STEP_SUMMARY
+          echo "- セキュリティヘッダー: \`npm install helmet\` → \`app.use(helmet())\` で対応" >> $GITHUB_STEP_SUMMARY
+          echo "- Cookie: \`httpOnly: true\` に変更（secure は HTTPS 環境でのみ true にする）" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**本番デプロイが承認待ちの場合**" >> $GITHUB_STEP_SUMMARY
+          echo "- 手動脆弱性診断（Burp Suite）を実施し、チェックリストを確認してください" >> $GITHUB_STEP_SUMMARY
+          echo "- 問題がなければ GitHub Environments の承認画面で 'Approve and deploy' をクリック" >> $GITHUB_STEP_SUMMARY
