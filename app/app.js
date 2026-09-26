@@ -1,6 +1,7 @@
 'use strict';
 const express = require('express');
 const session = require('express-session');
+const helmet = require('helmet');
 const { DatabaseSync } = require('node:sqlite');
 const moment = require('moment');
 const crypto = require('crypto');
@@ -85,6 +86,7 @@ if (db.prepare('SELECT COUNT(*) AS c FROM users').get().c === 0) {
 
 // ── App ──────────────────────────────────────────────────────────────
 const app = express();
+app.use(helmet());
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.urlencoded({ extended: false }));
@@ -93,7 +95,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'lottery-app-dev-secret',
   resave: false,
   saveUninitialized: true,
-  cookie: { httpOnly: false },
+  cookie: { httpOnly: true },
 }));
 
 function requireLogin(req, res, next) {

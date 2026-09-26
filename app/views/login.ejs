@@ -1,7 +1,7 @@
 <%- include('partials/header') %>
 <h1>ログイン</h1>
 
-<% if (msg) { %><p class="notice"><%- msg %></p><% } %>
+<% if (msg) { %><p class="notice"><%= msg %></p><% } %>
 
 <form method="post" action="/login" class="card">
   <label>ユーザー名
