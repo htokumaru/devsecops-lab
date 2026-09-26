@@ -1,4 +1,5 @@
 process.env.DB_PATH = ':memory:';
+process.env.SESSION_SECRET = 'test-only-session-secret';
 process.env.AUDIT_LOG = require('path').join(require('os').tmpdir(), 'lottery-test-audit.log');
 
 const request = require('supertest');

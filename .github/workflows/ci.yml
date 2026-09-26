@@ -161,7 +161,8 @@ jobs:
 
       - name: Build and start app (Docker Compose)
         run: |
-          docker compose -f docker-compose.yml up -d --build
+          # SESSION_SECRET は実行のたびにランダムに作る（この環境は検査が終われば捨てる）
+          SESSION_SECRET="$(openssl rand -hex 32)" docker compose -f docker-compose.yml up -d --build
           for i in {1..30}; do
             if curl -sf http://localhost:3000/login > /dev/null 2>&1; then
               echo "App is ready! ($i)"

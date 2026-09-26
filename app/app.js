@@ -91,8 +91,20 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public')));
+// セッションの署名に使う秘密の値は、環境変数から受け取る。
+// ソースコードに既定値を書くと、リポジトリを読める人なら誰でも知ることができる。
+let sessionSecret = process.env.SESSION_SECRET;
+if (!sessionSecret) {
+  if (process.env.NODE_ENV !== 'development') {
+    console.error('環境変数 SESSION_SECRET が設定されていません。起動を中止します。');
+    process.exit(1);
+  }
+  // 手元での開発に限り、起動のたびに一時的な値を作る（再起動するとログインは切れる）
+  sessionSecret = crypto.randomBytes(32).toString('hex');
+  console.warn('SESSION_SECRET が未設定のため、開発用の一時的な値を使います。');
+}
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'lottery-app-dev-secret',
+  secret: sessionSecret,
   resave: false,
   saveUninitialized: true,
   cookie: { httpOnly: true },
