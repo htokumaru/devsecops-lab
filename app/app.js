@@ -144,10 +144,14 @@ app.get('/', requireLogin, (req, res) => {
   const { keyword, status } = req.query;
 
   let sql = 'SELECT * FROM events WHERE 1 = 1';
-  if (keyword) sql += " AND (name LIKE '%" + keyword + "%' OR venue LIKE '%" + keyword + "%')";
-  if (status) sql += " AND status = '" + status + "'";
+  const params = [];
+  if (keyword) {
+    sql += ' AND (name LIKE ? OR venue LIKE ?)';
+    params.push('%' + keyword + '%', '%' + keyword + '%');
+  }
+  if (status) { sql += ' AND status = ?'; params.push(status); }
   sql += ' ORDER BY entry_end ASC';
-  const events = db.prepare(sql).all();
+  const events = db.prepare(sql).all(...params);
 
   res.render('index', {
     events,
