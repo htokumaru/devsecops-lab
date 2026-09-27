@@ -151,7 +151,7 @@ jobs:
   #    WARN レベルのアラートは -I フラグによりレポートに記録されるが失敗しない。
   # ─────────────────────────────────────────
   dast:
-    name: DAST - OWASP ZAP
+    name: DAST - ZAP
     runs-on: ubuntu-latest
     needs: [test, sca, sast]
     if: github.event_name == 'workflow_dispatch'
@@ -225,7 +225,7 @@ jobs:
           echo "|------------|--------|------|" >> $GITHUB_STEP_SUMMARY
           echo "| SCA | npm audit | ${{ needs.sca.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| SAST | Semgrep | ${{ needs.sast.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| DAST | OWASP ZAP | ${{ needs.dast.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| DAST | ZAP | ${{ needs.dast.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 修正のヒント" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
