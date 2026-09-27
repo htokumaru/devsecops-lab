@@ -4,6 +4,7 @@
 <% if (msg) { %><p class="notice"><%= msg %></p><% } %>
 
 <table class="detail">
+  <tr><th>主催者</th><td><%= event.organizer %></td></tr>
   <tr><th>会場</th><td><%= event.venue %></td></tr>
   <tr><th>応募期間</th><td><%= moment(event.entry_start).format('YYYY/MM/DD') %> 〜 <%= moment(event.entry_end).format('YYYY/MM/DD') %></td></tr>
   <tr><th>当選枠</th><td><%= event.capacity.toLocaleString() %> 席</td></tr>
@@ -11,9 +12,11 @@
   <tr><th>状態</th><td><span class="status status-<%= event.status %>"><%= event.status === 'open' ? '受付中' : '抽選済み' %></span></td></tr>
 </table>
 
+<% if (event.status === 'open' && event.organizer_id === currentUser.id) { %>
 <form method="post" action="/admin/events/<%= event.id %>/draw" class="draw">
   <button type="submit">抽選を実施する</button>
 </form>
+<% } %>
 
 <h2>応募一覧</h2>
 <table>

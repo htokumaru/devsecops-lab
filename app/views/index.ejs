@@ -19,21 +19,22 @@
 
 <table>
   <thead>
-    <tr><th>公演名</th><th>会場</th><th>開催日</th><th>応募期間</th><th>当選枠</th><th>状態</th></tr>
+    <tr><th>公演名</th><th>主催者</th><th>会場</th><th>開催日</th><th>応募期間</th><th>当選枠</th><th>状態</th></tr>
   </thead>
   <tbody>
     <% if (events.length === 0) { %>
-      <tr><td colspan="6" class="empty">該当するイベントはありません</td></tr>
+      <tr><td colspan="7" class="empty">該当するイベントはありません</td></tr>
     <% } %>
     <% events.forEach(function (e) { %>
       <tr>
         <td>
-          <% if (currentUser.role === 'organizer') { %>
+          <% if (currentUser.role === 'organizer' && e.organizer_id === currentUser.id) { %>
             <a href="/admin/events/<%= e.id %>"><%= e.name %></a>
           <% } else { %>
             <a href="/events/<%= e.id %>"><%= e.name %></a>
           <% } %>
         </td>
+        <td><%= organizers[e.organizer_id] || '' %></td>
         <td><%= e.venue %></td>
         <td><%= moment(e.held_on).format('YYYY/MM/DD') %></td>
         <td class="period"><%= moment(e.entry_start).format('M/D') %> 〜 <%= moment(e.entry_end).format('M/D') %></td>
