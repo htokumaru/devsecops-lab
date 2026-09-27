@@ -73,15 +73,16 @@ if (db.prepare('SELECT COUNT(*) AS c FROM users').get().c === 0) {
   addEvent.run(3, '春風ロックフェス 2026', '幕張メッセ', d(60), d(-3), d(14), 200, 2, 'open');
   addEvent.run(3, '真夏のジャズナイト', 'ブルーノート東京', d(45), d(-1), d(10), 80, 2, 'open');
   addEvent.run(4, '劇団かもめ 冬公演', '新国立劇場', d(30), d(-20), d(-5), 120, 4, 'drawn');
+  addEvent.run(4, '劇団かもめ 春公演', '新国立劇場', d(90), d(-2), d(21), 120, 4, 'open');
 
   const addEntry = db.prepare(
     'INSERT INTO entries (event_id, user_id, quantity, contact, result, created_at) VALUES (?, ?, ?, ?, ?, ?)'
   );
   const now = moment().format('YYYY-MM-DD HH:mm:ss');
-  addEntry.run(1, 1, 2, 'yamada@example.com / 090-1111-2222', 'pending', now);
-  addEntry.run(2, 1, 1, 'yamada@example.com / 090-1111-2222', 'pending', now);
-  addEntry.run(1, 2, 1, 'suzuki@example.com / 080-3333-4444', 'pending', now);
-  addEntry.run(3, 2, 4, 'suzuki@example.com / 080-3333-4444', 'won', now);
+  addEntry.run(1, 1, 2, 'yamada@example.com / 03-3000-1111', 'pending', now);
+  addEntry.run(2, 1, 1, 'yamada@example.com / 03-3000-1111', 'pending', now);
+  addEntry.run(1, 2, 1, 'suzuki@example.com / 03-3000-3333', 'pending', now);
+  addEntry.run(3, 2, 4, 'suzuki@example.com / 03-3000-3333', 'won', now);
 }
 
 // ── App ──────────────────────────────────────────────────────────────
@@ -166,9 +167,14 @@ app.get('/', requireLogin, (req, res) => {
   if (status) { sql += ' AND status = ?'; params.push(status); }
   sql += ' ORDER BY entry_end ASC';
   const events = db.prepare(sql).all(...params);
+  const organizers = Object.fromEntries(
+    db.prepare("SELECT id, display_name FROM users WHERE role = 'organizer'").all()
+      .map(u => [u.id, u.display_name])
+  );
 
   res.render('index', {
     events,
+    organizers,
     filter: { keyword: keyword || '', status: status || '' },
     msg: req.query.msg || '',
   });
@@ -258,7 +264,11 @@ app.get('/entries/:id', requireLogin, (req, res) => {
 
 // ── 主催者向け ───────────────────────────────────────────────────────
 app.get('/admin/events/:id', requireLogin, requireOrganizer, (req, res) => {
-  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id);
+  const event = db.prepare(`
+    SELECT events.*, users.display_name AS organizer
+      FROM events JOIN users ON users.id = events.organizer_id
+     WHERE events.id = ?
+  `).get(req.params.id);
   if (!event) {
     return res.status(404).render('error', { message: 'イベントが見つかりません' });
   }
