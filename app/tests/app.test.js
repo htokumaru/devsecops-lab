@@ -58,7 +58,7 @@ describe('抽選一覧', () => {
     const agent = await loginAs('yamada', 'yamada-pass');
     const res = await agent.get('/').query({ status: 'drawn' });
     expect(res.status).toBe(200);
-    expect(res.text).toContain('劇団かもめ 冬公演');
+    expect(res.text).toContain('劇団C 冬公演');
     expect(res.text).not.toContain('春風ロックフェス 2026');
   });
 });
