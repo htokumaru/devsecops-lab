@@ -62,18 +62,18 @@ if (db.prepare('SELECT COUNT(*) AS c FROM users').get().c === 0) {
   );
   addUser.run('yamada', hashPassword('yamada-pass'), '山田 太郎', 'applicant');
   addUser.run('suzuki', hashPassword('suzuki-pass'), '鈴木 花子', 'applicant');
-  addUser.run('tanaka', hashPassword('tanaka-pass'), '田中 興行', 'organizer');
-  addUser.run('sato', hashPassword('sato-pass'), '佐藤プロモーション', 'organizer');
+  addUser.run('tanaka', hashPassword('tanaka-pass'), 'A興行', 'organizer');
+  addUser.run('sato', hashPassword('sato-pass'), 'Bプロモーション', 'organizer');
 
   const addEvent = db.prepare(`
     INSERT INTO events (organizer_id, name, venue, held_on, entry_start, entry_end, capacity, entry_limit, status)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const d = n => moment().add(n, 'days').format('YYYY-MM-DD');
-  addEvent.run(3, '春風ロックフェス 2026', '幕張メッセ', d(60), d(-3), d(14), 200, 2, 'open');
-  addEvent.run(3, '真夏のジャズナイト', 'ブルーノート東京', d(45), d(-1), d(10), 80, 2, 'open');
-  addEvent.run(4, '劇団かもめ 冬公演', '新国立劇場', d(30), d(-20), d(-5), 120, 4, 'drawn');
-  addEvent.run(4, '劇団かもめ 春公演', '新国立劇場', d(90), d(-2), d(21), 120, 4, 'open');
+  addEvent.run(3, '春風ロックフェス 2026', 'Aアリーナ', d(60), d(-3), d(14), 200, 2, 'open');
+  addEvent.run(3, '真夏のジャズナイト', 'Bジャズクラブ', d(45), d(-1), d(10), 80, 2, 'open');
+  addEvent.run(4, '劇団C 冬公演', 'C劇場', d(30), d(-20), d(-5), 120, 4, 'drawn');
+  addEvent.run(4, '劇団C 春公演', 'C劇場', d(90), d(-2), d(21), 120, 4, 'open');
 
   const addEntry = db.prepare(
     'INSERT INTO entries (event_id, user_id, quantity, contact, result, created_at) VALUES (?, ?, ?, ?, ?, ?)'
