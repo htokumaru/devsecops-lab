@@ -8,6 +8,14 @@ on:
   # 手動実行: GitHub Actions の UI から "Run workflow" ボタンで起動
   # DAST ジョブは workflow_dispatch 時のみ実行される
   workflow_dispatch:
+    inputs:
+      sca_exception:
+        # 本書の刊行後に公表された脆弱性に修正版がなく、SCA を通せない場合の逃げ道。
+        # 影響を評価したうえで理由を記入すると、SCA ジョブが理由を実行結果に記録して失敗を受け入れ、
+        # DAST へ進む。空のままなら従来どおり SCA の失敗でパイプラインは止まる。
+        description: 'SCAの失敗を受け入れる理由（修正版のない脆弱性を評価済みの場合だけ記入。空なら失敗で止まる）'
+        type: string
+        default: ''
 
 jobs:
   # ─────────────────────────────────────────
@@ -63,12 +71,27 @@ jobs:
         run: npm ci
 
       - name: Run npm audit (SCA)
-        # high/critical を検出すると CI が失敗する (|| true を削除)
-        run: npm audit --audit-level=high
+        id: audit
+        # high/critical を検出すると CI が失敗する (|| true を削除)。
+        # 監査の対象は本番環境に配備するパッケージに限る (--omit=dev。Dockerfile の npm ci --omit=dev と同じ範囲)
+        # 手動実行で sca_exception に理由が記入されたときだけ、失敗してもジョブを止めない（下のステップで理由を記録する）
+        continue-on-error: ${{ github.event_name == 'workflow_dispatch' && inputs.sca_exception != '' }}
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Record the accepted SCA failure
+        # 理由が記入され、かつ監査が実際に失敗した場合に、人の判断を実行結果のサマリーに残す
+        if: github.event_name == 'workflow_dispatch' && inputs.sca_exception != '' && steps.audit.outcome == 'failure'
+        env:
+          REASON: ${{ inputs.sca_exception }}
+        run: |
+          echo "## SCA の失敗を受け入れました" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "手動実行時に記入された理由: $REASON" >> $GITHUB_STEP_SUMMARY
+          echo "::warning title=SCA failure accepted::$REASON"
 
       - name: Generate npm audit report (JSON)
         if: always()
-        run: npm audit --json > npm-audit-report.json || true
+        run: npm audit --omit=dev --json > npm-audit-report.json || true
 
       - name: Upload SCA report
         uses: actions/upload-artifact@v4
